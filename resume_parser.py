@@ -1,177 +1,249 @@
 import PyPDF2
-import docx    # python-docx library for DOCX parsing
-import spacy    # NLP for NER (name extraction)
-import re    # Regular expressions for patterns (email, phone, dates)
-import os     # File system operations
-from pathlib import Path    # Modern path handling
-import json    # Save structured data as JSON
+import docx
+import spacy
+import re
+import os
+from pathlib import Path
+import json
 
-class ResumeParser: 
-    # Complete resume parser for PDF/DOCX/TXT formats.
-    # Extracts: name, email, phone, education, skills, experience.
-    # Handles encoding errors, uses spaCy NER for accuracy.
-    
+class ResumeParser:
     def __init__(self):
-        """Initialize spaCy NLP model (NER for names)"""
+        # Load spaCy NLP model
         try:
             self.nlp = spacy.load("en_core_web_sm")
-            print("✅ spaCy loaded successfully")
-        except OSError:
-            print("⚠️ spaCy model missing. Run: python -m spacy download en_core_web_sm")
+        except:
+            print("Please install spaCy model: python -m spacy download en_core_web_sm")
             self.nlp = None
     
     def read_pdf(self, file_path):
-        """Extract text from PDF using PyPDF2"""
+        """Extract text from PDF files"""
         text = ""
         try:
             with open(file_path, 'rb') as file:
                 pdf_reader = PyPDF2.PdfReader(file)
                 for page in pdf_reader.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += page_text + "\n"
-            return text.strip()
+                    text += page.extract_text()
+            return text
         except Exception as e:
-            print(f"⚠️ PDF error {file_path}: {e}")
+            print(f"Error reading PDF {file_path}: {str(e)}")
             return None
     
-    # In resume_parser.py, read_docx() - add table extraction:
-def read_docx(self, file_path):
-    text = ""
-    try:
-        doc = docx.Document(file_path)
-        # Paragraphs
-        for para in doc.paragraphs:
-            if para.text.strip():
-                text += para.text + "\n"
-        # TABLES (common DOCX issue)
-        for table in doc.tables:
-            for row in table.rows:
-                row_text = ' '.join([cell.text for cell in row.cells])
-                if row_text.strip():
-                    text += row_text + "\n"
-        return text.strip()
-    except Exception as e:
-        print(f"⚠️ DOCX error {file_path}: {e}")
-        return None
-
+    def read_docx(self, file_path):
+        """Extract text from DOCX files"""
+        text = ""
+        try:
+            doc = docx.Document(file_path)
+            for paragraph in doc.paragraphs:
+                text += paragraph.text + "\n"
+            return text
+        except Exception as e:
+            print(f"Error reading DOCX {file_path}: {str(e)}")
+            return None
     
     def read_txt(self, file_path):
-        """Extract text from TXT with encoding fallback"""
-        encodings = ['utf-8', 'latin-1', 'cp1252']
-        for encoding in encodings:
+        """Extract text from TXT files"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                return file.read()
+        except UnicodeDecodeError:
+            # Try different encoding
             try:
-                with open(file_path, 'r', encoding=encoding) as file:
+                with open(file_path, 'r', encoding='latin-1') as file:
                     return file.read()
-            except UnicodeDecodeError:
-                continue
-        print(f"⚠️ TXT encoding error {file_path}")
-        return None
+            except Exception as e:
+                print(f"Error reading TXT {file_path}: {str(e)}")
+                return None
     
     def extract_text(self, file_path):
-        """Route to correct parser by file extension"""
-        ext = Path(file_path).suffix.lower()
-        if ext == '.pdf': return self.read_pdf(file_path)
-        elif ext == '.docx': return self.read_docx(file_path)
-        elif ext == '.txt': return self.read_txt(file_path)
+        """Main method to extract text based on file type"""
+        file_ext = Path(file_path).suffix.lower()
+        
+        if file_ext == '.pdf':
+            return self.read_pdf(file_path)
+        elif file_ext == '.docx':
+            return self.read_docx(file_path)
+        elif file_ext == '.txt':
+            return self.read_txt(file_path)
         else:
-            print(f"❌ Unsupported format: {ext}")
+            print(f"Unsupported file format: {file_ext}")
             return None
     
     def extract_email(self, text):
-        """Extract first valid email with regex"""
-        pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-        emails = re.findall(pattern, text, re.IGNORECASE)
+        """Extract email addresses"""
+        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        emails = re.findall(email_pattern, text)
         return emails[0] if emails else None
     
     def extract_phone(self, text):
-        """Extract Sri Lankan + international phones"""
+        """Extract phone numbers"""
+        # Multiple patterns for different phone formats
         patterns = [
-            r'\+?94[17]\d{8}',  # Sri Lanka: +947xxxxxxxx, 07xxxxxxxx
-            r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}',  # International
-            r'\d{10}'  # 10 digits
+            r'\+?\d{1,3}[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}',
+            r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}',
+            r'\d{10}'
         ]
+        
         for pattern in patterns:
             phones = re.findall(pattern, text)
             if phones:
-                return phones[0].strip()
+                return phones[0]
         return None
     
     def extract_name(self, text):
-        """spaCy NER for PERSON or first line fallback"""
-        if self.nlp:
-            doc = self.nlp(text[:1000])  # First page usually has name
-            names = [ent.text.strip() for ent in doc.ents if ent.label_ == "PERSON"]
-            if names: return names[0]
+        """Extract candidate name (usually first line or first proper nouns)"""
+        if not self.nlp:
+            # Fallback: return first line
+            lines = text.strip().split('\n')
+            return lines[0].strip() if lines else "Unknown"
         
-        # Fallback: First non-empty line
-        lines = [line.strip() for line in text.split('\n')[:5] if len(line.strip().split()) <= 3]
-        for line in lines:
-            if re.match(r'^[A-Z][a-z]+(\s[A-Z][a-z]+){1,2}$', line):
-                return line
-        return "Unknown"
+        doc = self.nlp(text[:500])  # Check first 500 chars
+        persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
+        return persons[0] if persons else "Unknown"
     
     def extract_education(self, text):
-        """Regex patterns for degrees/universities"""
-        patterns = [
-            r"(?:Bachelor|Master|PhD|Diploma)[^.\n]*?(?:\d{4}|University)",
-            r"B\.Sc|A\.Sc|M\.Sc|BS|MS|BA|MA",
-            r"(degree|graduat)[^.\n]*?(?:\d{4}|from\s+\w+)"
-        ]
+        """Extract education information"""
         education = []
-        for pattern in patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE | re.DOTALL)
-            education.extend(matches)
-        return education[:3] if education else ["Not specified"]
+        
+        # Common degree patterns
+        degree_patterns = [
+            r"Bachelor(?:'s)?\s+(?:of\s+)?(?:Science|Arts|Engineering|Technology|Business|Commerce)?",
+            r"Master(?:'s)?\s+(?:of\s+)?(?:Science|Arts|Engineering|Technology|Business|Commerce)?",
+            r"B\.?(?:Sc|A|E|Tech|Com|B\.?A)\.?",
+            r"M\.?(?:Sc|A|E|Tech|Com|B\.?A)\.?",
+            r"Ph\.?D\.?",
+            r"Diploma",
+            r"Associate(?:'s)?\s+Degree"
+        ]
+        
+        for pattern in degree_patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            for match in matches:
+                # Get surrounding context (±100 chars)
+                start = max(0, match.start() - 100)
+                end = min(len(text), match.end() + 100)
+                context = text[start:end]
+                education.append(context.strip())
+        
+        return education if education else ["Not specified"]
     
     def extract_skills(self, text):
-        """Keyword matching - FIXED RAW STRINGS"""
-        skills = [
-            'Python', 'Java', 'JavaScript', r'C\+\+', 'SQL', 'HTML', 'CSS',  # Raw strings fix warnings
-            r'Node\.js', 'React', 'Angular', 'Django', 'Flask', 'solidity', 'blockchain',
-            'HR', 'recruitment', 'marketing', 'accounting', 'finance', 'excel',
-            'leadership', 'communication', 'teamwork', 'management'
+        """Extract skills from resume"""
+        # Common skills database
+        common_skills = [
+            'Python', 'Java', 'JavaScript', 'C\+\+', 'SQL', 'HTML', 'CSS',
+            'React', 'Angular', 'Node\.js', 'Django', 'Flask',
+            'Machine Learning', 'Data Analysis', 'AWS', 'Azure', 'Docker',
+            'Communication', 'Leadership', 'Project Management', 'Teamwork',
+            'Problem Solving', 'Marketing', 'SEO', 'Social Media',
+            'Accounting', 'Financial Analysis', 'Excel', 'QuickBooks',
+            'HR Management', 'Recruitment', 'Employee Relations',
+            'MS Office', 'PowerPoint', 'Word', 'Outlook'
         ]
-        found = []
+        
+        found_skills = []
         text_lower = text.lower()
-        for skill in skills:
-            skill_lower = skill if isinstance(skill, str) else skill.lower()
-            if re.search(skill_lower, text_lower):
-                found.append(skill.replace(r'C\+\+', 'C++').replace(r'Node\.js', 'Node.js'))
-        return list(set(found))[:10] or ["Not specified"]
+        
+        for skill in common_skills:
+            if re.search(skill.lower(), text_lower):
+                found_skills.append(skill)
+        
+        return found_skills if found_skills else ["Not specified"]
     
     def extract_experience(self, text):
-        """Extract experience section with years"""
-        exp_match = re.search(
-            r'(?:experience|work history).*?(?=(?:education|skills|$))',
-            text, re.IGNORECASE | re.DOTALL
+        """Extract work experience"""
+        experience = []
+        
+        # Look for experience section
+        exp_section = re.search(
+            r'(?:experience|employment|work history)(.*?)(?:education|skills|certifications|$)',
+            text,
+            re.IGNORECASE | re.DOTALL
         )
-        if exp_match:
-            years = re.findall(r'\b(20\d{2})\b|(\d+ years?)', exp_match.group(0))
-            return [y[0] or y[1] for y in years][:3]
-        return ["Not specified"]
+        
+        if exp_section:
+            exp_text = exp_section.group(1)
+            
+            # Look for year patterns (2020-2023, 2020-Present, etc.)
+            year_patterns = re.finditer(
+                r'(\d{4})\s*[-–]\s*(\d{4}|Present|Current)',
+                exp_text,
+                re.IGNORECASE
+            )
+            
+            for match in year_patterns:
+                # Get surrounding context
+                start = max(0, match.start() - 200)
+                end = min(len(exp_text), match.end() + 200)
+                context = exp_text[start:end].strip()
+                experience.append(context)
+        
+        return experience if experience else ["Not specified"]
+    
+    def extract_certifications(self, text):
+        """Extract certifications from resume"""
+        certifications = []
+        
+        # Common certification patterns
+        cert_patterns = [
+            r"(?:Certified|Certification).*?(?:\n|$)",
+            r"(?:PMP|CISSP|AWS|Azure|Google Cloud|CompTIA|CCNA|CCIE)",
+            r"(?:Scrum Master|Product Owner|Six Sigma|ITIL)",
+            r"(?:CPA|CFA|CMA|CIA)",  # Accounting certs
+            r"(?:SHRM-CP|SHRM-SCP|PHR|SPHR)",  # HR certs
+        ]
+        
+        # Look for certification section
+        cert_section = re.search(
+            r'(?:certifications?|licenses?)(.*?)(?:education|skills|experience|$)',
+            text,
+            re.IGNORECASE | re.DOTALL
+        )
+        
+        if cert_section:
+            cert_text = cert_section.group(1)
+            
+            for pattern in cert_patterns:
+                matches = re.finditer(pattern, cert_text, re.IGNORECASE)
+                for match in matches:
+                    cert = match.group(0).strip()
+                    if cert and len(cert) < 100:  # Reasonable length
+                        certifications.append(cert)
+        
+        return certifications if certifications else ["None specified"]
     
     def parse_resume(self, file_path):
-        """Complete parsing pipeline"""
-        print(f"Parsing: {Path(file_path).name}")
+        """Main method to parse a resume and extract all information"""
+        print(f"\nParsing: {os.path.basename(file_path)}")
+        
+        # Extract text
         text = self.extract_text(file_path)
         
         if not text:
-            print(f"✗ No text extracted from {Path(file_path).name}")
             return None
         
-        return {
-            'file_name': Path(file_path).name,
+        # Extract all information
+        resume_data = {
+            'file_name': os.path.basename(file_path),
             'name': self.extract_name(text),
             'email': self.extract_email(text),
             'phone': self.extract_phone(text),
             'education': self.extract_education(text),
             'skills': self.extract_skills(text),
             'experience': self.extract_experience(text),
-            'raw_text': text[:500]  # Preview
+            'certifications': self.extract_certifications(text),
+            'raw_text': text[:500]  # Store first 500 chars
         }
+        
+        return resume_data
 
+
+# Example usage
 if __name__ == "__main__":
     parser = ResumeParser()
-    result = parser.parse_resume("resumes/pdf/Dian.pdf")
-    print(result)
+    
+    # Test with a single file
+    resume_data = parser.parse_resume("resumes/pdf/sample_resume.pdf")
+    
+    if resume_data:
+        print("\nExtracted Information:")
+        print(json.dumps(resume_data, indent=2))
