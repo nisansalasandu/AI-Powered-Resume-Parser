@@ -130,8 +130,8 @@ class ResumeParser:
         """Extract skills from resume"""
         # Common skills database
         common_skills = [
-            'Python', 'Java', 'JavaScript', 'C\+\+', 'SQL', 'HTML', 'CSS',
-            'React', 'Angular', 'Node\.js', 'Django', 'Flask',
+            'Python', 'Java', 'JavaScript', r'C\+\+', 'SQL', 'HTML', 'CSS',
+            'React', 'Angular', r'Node\.js', 'Django', 'Flask',
             'Machine Learning', 'Data Analysis', 'AWS', 'Azure', 'Docker',
             'Communication', 'Leadership', 'Project Management', 'Teamwork',
             'Problem Solving', 'Marketing', 'SEO', 'Social Media',
@@ -145,7 +145,9 @@ class ResumeParser:
         
         for skill in common_skills:
             if re.search(skill.lower(), text_lower):
-                found_skills.append(skill)
+                # Remove regex special characters for display
+                display_skill = skill.replace(r'\+\+', '++').replace(r'\.js', '.js')
+                found_skills.append(display_skill)
         
         return found_skills if found_skills else ["Not specified"]
     

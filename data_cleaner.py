@@ -49,6 +49,30 @@ class DataCleaner:
         return name
     
     @staticmethod
+    def clean_text_for_excel(text):
+        """Remove illegal characters for Excel compatibility"""
+        if not text:
+            return text
+        
+        if isinstance(text, list):
+            return [DataCleaner.clean_text_for_excel(item) for item in text]
+        
+        if not isinstance(text, str):
+            return text
+        
+        # Remove illegal Excel characters (control characters 0x00-0x1F except tab, newline, carriage return)
+        # Also limit length to avoid Excel cell limit (32,767 characters)
+        illegal_chars = [chr(i) for i in range(0, 32) if i not in [9, 10, 13]]
+        for char in illegal_chars:
+            text = text.replace(char, '')
+        
+        # Truncate if too long (keep first 1000 chars for summaries)
+        if len(text) > 1000:
+            text = text[:1000] + "..."
+        
+        return text
+    
+    @staticmethod
     def extract_years_of_experience(experience_list):
         """Calculate total years of experience"""
         total_years = 0
@@ -68,7 +92,7 @@ class DataCleaner:
                 elif len(years) == 1 and re.search(r'present|current', exp, re.IGNORECASE):
                     try:
                         start_year = int(years[0])
-                        current_year = 2024
+                        current_year = 2026
                         total_years += (current_year - start_year)
                     except:
                         pass
@@ -107,16 +131,21 @@ class DataCleaner:
         flattened_data = []
         
         for resume in resume_list:
+            # Clean and truncate list fields for Excel compatibility
+            education_str = ', '.join([str(e)[:200] for e in resume.get('education', [])])
+            skills_str = ', '.join(resume.get('skills', []))
+            certs_str = ', '.join(resume.get('certifications', []))
+            exp_str = ' | '.join([str(e)[:300] for e in resume.get('experience', [])[:2]])
             flat_resume = {
                 'file_name': resume.get('file_name', ''),
                 'name': resume.get('name', ''),
                 'email': resume.get('email', ''),
                 'phone': resume.get('phone', ''),
                 'years_of_experience': resume.get('years_of_experience', 0),
-                'education': ', '.join(resume.get('education', [])),
-                'skills': ', '.join(resume.get('skills', [])),
-                'certifications': ', '.join(resume.get('certifications', [])),
-                'experience_summary': ' | '.join(resume.get('experience', [])[:2])
+                'education': DataCleaner.clean_text_for_excel(education_str),
+                'skills': DataCleaner.clean_text_for_excel(skills_str),
+                'certifications': DataCleaner.clean_text_for_excel(certs_str),
+                'experience_summary': DataCleaner.clean_text_for_excel(exp_str)
             }
             flattened_data.append(flat_resume)
         
