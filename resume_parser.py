@@ -69,18 +69,23 @@ class ResumeParser:
             return None
     
     def extract_email(self, text):
-        """Extract email addresses"""
+        """Extract email addresses - ENHANCED"""
         email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
         emails = re.findall(email_pattern, text)
-        return emails[0] if emails else None
+        
+        # Filter out common noise
+        valid_emails = [e for e in emails if not any(x in e.lower() for x in ['example.com', 'test.com'])]
+        
+        return valid_emails[0] if valid_emails else (emails[0] if emails else None)
     
     def extract_phone(self, text):
-        """Extract phone numbers"""
-        # Multiple patterns for different phone formats
+        """Extract phone numbers - ENHANCED"""
+        # Multiple patterns for different phone formats including international
         patterns = [
+            r'\+94\s?\d{9}',  # Sri Lankan format
+            r'0\d{9}',  # Sri Lankan local format
             r'\+?\d{1,3}[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}',
             r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}',
-            r'\d{10}'
         ]
         
         for pattern in patterns:
@@ -90,15 +95,52 @@ class ResumeParser:
         return None
     
     def extract_name(self, text):
-        """Extract candidate name (usually first line or first proper nouns)"""
-        if not self.nlp:
-            # Fallback: return first line
-            lines = text.strip().split('\n')
-            return lines[0].strip() if lines else "Unknown"
+        """Extract candidate name - ENHANCED"""
+        # Try multiple strategies
         
-        doc = self.nlp(text[:500])  # Check first 500 chars
-        persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
-        return persons[0] if persons else "Unknown"
+        # Strategy 1: Look for name in first few lines (before email/phone)
+        lines = text.strip().split('\n')[:10]
+        
+        # Common location/address words to avoid
+        location_words = ['lane', 'street', 'road', 'avenue', 'city', 'galle', 'colombo', 
+                         'sri lanka', 'details', 'contact', 'address', 'location']
+        
+        for line in lines:
+            line_clean = line.strip()
+            
+            # Skip empty lines or lines with email/phone
+            if not line_clean or '@' in line_clean or re.search(r'\d{5,}', line_clean):
+                continue
+            
+            # Skip if it's a location
+            if any(loc in line_clean.lower() for loc in location_words):
+                continue
+            
+            # If line has 2-4 words and looks like a name
+            words = line_clean.split()
+            if 2 <= len(words) <= 4 and all(word[0].isupper() for word in words if word):
+                return line_clean
+        
+        # Strategy 2: Use spaCy
+        if self.nlp:
+            doc = self.nlp(text[:500])
+            persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
+            
+            # Filter out locations and short names
+            valid_persons = [p for p in persons 
+                           if len(p.split()) >= 2 
+                           and not any(loc in p.lower() for loc in location_words)]
+            
+            if valid_persons:
+                return valid_persons[0]
+        
+        # Strategy 3: Fallback to first non-empty line
+        for line in lines[:5]:
+            line_clean = line.strip()
+            if line_clean and len(line_clean.split()) >= 2:
+                return line_clean
+        
+        return "Unknown"
     
     def extract_education(self, text):
         """Extract education information"""
@@ -106,13 +148,15 @@ class ResumeParser:
         
         # Common degree patterns
         degree_patterns = [
-            r"Bachelor(?:'s)?\s+(?:of\s+)?(?:Science|Arts|Engineering|Technology|Business|Commerce)?",
+            r"Bachelor(?:'s)?\s+(?:of\s+)?(?:Science|Arts|Engineering|Technology|Business|Commerce|Finance|Accounting)?",
             r"Master(?:'s)?\s+(?:of\s+)?(?:Science|Arts|Engineering|Technology|Business|Commerce)?",
             r"B\.?(?:Sc|A|E|Tech|Com|B\.?A)\.?",
             r"M\.?(?:Sc|A|E|Tech|Com|B\.?A)\.?",
             r"Ph\.?D\.?",
             r"Diploma",
-            r"Associate(?:'s)?\s+Degree"
+            r"Associate(?:'s)?\s+Degree",
+            r"BA\s+in\s+\w+",
+            r"BSc\s+in\s+\w+"
         ]
         
         for pattern in degree_patterns:
@@ -127,29 +171,62 @@ class ResumeParser:
         return education if education else ["Not specified"]
     
     def extract_skills(self, text):
-        """Extract skills from resume"""
-        # Common skills database
+        """Extract skills from resume - ENHANCED with more skills"""
+        # Expanded skills database
         common_skills = [
-            'Python', 'Java', 'JavaScript', r'C\+\+', 'SQL', 'HTML', 'CSS',
-            'React', 'Angular', r'Node\.js', 'Django', 'Flask',
-            'Machine Learning', 'Data Analysis', 'AWS', 'Azure', 'Docker',
-            'Communication', 'Leadership', 'Project Management', 'Teamwork',
-            'Problem Solving', 'Marketing', 'SEO', 'Social Media',
-            'Accounting', 'Financial Analysis', 'Excel', 'QuickBooks',
-            'HR Management', 'Recruitment', 'Employee Relations',
-            'MS Office', 'PowerPoint', 'Word', 'Outlook'
+            # Programming & Tech
+            'Python', 'Java', 'JavaScript', 'C++', 'C#', 'SQL', 'HTML', 'CSS', 'PHP', 'Ruby',
+            'React', 'Angular', 'Node.js', 'Django', 'Flask', 'Vue.js', 'TypeScript',
+            'Machine Learning', 'Data Analysis', 'Data Science', 'AI', 'Deep Learning',
+            'AWS', 'Azure', 'Google Cloud', 'Docker', 'Kubernetes', 'Git', 'DevOps',
+            
+            # Soft Skills
+            'Communication', 'Leadership', 'Project Management', 'Teamwork', 'Team Building',
+            'Problem Solving', 'Critical Thinking', 'Time Management', 'Adaptability',
+            'Conflict Resolution', 'Negotiation', 'Presentation', 'Public Speaking',
+            
+            # Business & Marketing
+            'Marketing', 'Digital Marketing', 'SEO', 'Social Media', 'Content Marketing',
+            'Brand Management', 'Market Research', 'Sales', 'Customer Service',
+            'Business Development', 'Strategic Planning', 'Analytics',
+            
+            # Finance & Accounting
+            'Accounting', 'Financial Analysis', 'Financial Reporting', 'Budgeting', 
+            'Forecasting', 'Excel', 'QuickBooks', 'SAP', 'Oracle', 'Bookkeeping',
+            'Tax Preparation', 'Auditing', 'Cost Analysis', 'Financial Planning',
+            
+            # HR
+            'HR Management', 'Recruitment', 'Employee Relations', 'Talent Acquisition',
+            'Performance Management', 'Training', 'Onboarding', 'Compensation',
+            'Benefits Administration', 'Labor Relations', 'HRIS',
+            
+            # Office & Productivity
+            'MS Office', 'Microsoft Office', 'PowerPoint', 'Word', 'Outlook', 'Excel',
+            'Google Suite', 'Data Entry', 'Administrative', 'Documentation',
+            
+            # Additional
+            'Research', 'Analysis', 'Reporting', 'Documentation', 'Quality Assurance',
+            'Process Improvement', 'Stakeholder Management', 'Risk Management'
         ]
         
         found_skills = []
         text_lower = text.lower()
         
         for skill in common_skills:
-            if re.search(skill.lower(), text_lower):
-                # Remove regex special characters for display
-                display_skill = skill.replace(r'\+\+', '++').replace(r'\.js', '.js')
-                found_skills.append(display_skill)
+            # Use word boundaries for better matching
+            skill_pattern = r'\b' + re.escape(skill.lower()) + r'\b'
+            if re.search(skill_pattern, text_lower):
+                found_skills.append(skill)
         
-        return found_skills if found_skills else ["Not specified"]
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_skills = []
+        for skill in found_skills:
+            if skill.lower() not in seen:
+                seen.add(skill.lower())
+                unique_skills.append(skill)
+        
+        return unique_skills if unique_skills else ["Not specified"]
     
     def extract_experience(self, text):
         """Extract work experience"""
@@ -188,15 +265,15 @@ class ResumeParser:
         # Common certification patterns
         cert_patterns = [
             r"(?:Certified|Certification).*?(?:\n|$)",
-            r"(?:PMP|CISSP|AWS|Azure|Google Cloud|CompTIA|CCNA|CCIE)",
+            r"(?:PMP|CISSP|AWS|Azure|Google Cloud|Google Analytics|CompTIA|CCNA|CCIE)",
             r"(?:Scrum Master|Product Owner|Six Sigma|ITIL)",
-            r"(?:CPA|CFA|CMA|CIA)",  # Accounting certs
+            r"(?:CPA|CFA|CMA|CIA|ACCA|CIMA)",  # Accounting certs
             r"(?:SHRM-CP|SHRM-SCP|PHR|SPHR)",  # HR certs
         ]
         
         # Look for certification section
         cert_section = re.search(
-            r'(?:certifications?|licenses?)(.*?)(?:education|skills|experience|$)',
+            r'(?:certifications?|licenses?)(.*?)(?:education|skills|experience|languages|$)',
             text,
             re.IGNORECASE | re.DOTALL
         )

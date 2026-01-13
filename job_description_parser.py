@@ -88,35 +88,64 @@ class JobDescriptionParser:
         return lines[0].strip() if lines else "Unknown Position"
     
     def extract_required_skills(self, text):
-        """Extract required skills from job description"""
+        """Extract required skills from job description - ENHANCED"""
         skills = []
         
-        # Find skills section
+        # Find skills/requirements section
         skills_section = re.search(
-            r'(?:required skills|qualifications|requirements|skills)(.*?)(?:responsibilities|duties|benefits|$)',
+            r'(?:required skills|qualifications|requirements|skills|key responsibilities)(.*?)(?:responsibilities|duties|benefits|how to apply|$)',
             text,
             re.IGNORECASE | re.DOTALL
         )
         
-        if skills_section:
-            skills_text = skills_section.group(1)
+        search_text = skills_section.group(1) if skills_section else text
+        
+        # Expanded skills database matching resume parser
+        common_skills = [
+            # Programming & Tech
+            'Python', 'Java', 'JavaScript', 'C++', 'C#', 'SQL', 'HTML', 'CSS', 'PHP', 'Ruby',
+            'React', 'Angular', 'Node.js', 'Django', 'Flask', 'Vue.js', 'TypeScript',
+            'Machine Learning', 'Data Analysis', 'Data Science', 'AI', 'Deep Learning',
+            'AWS', 'Azure', 'Google Cloud', 'Docker', 'Kubernetes', 'Git', 'DevOps',
             
-            # Common skills database
-            common_skills = [
-                'Python', 'Java', 'JavaScript', 'C++', 'SQL', 'HTML', 'CSS',
-                'React', 'Angular', 'Node.js', 'Django', 'Flask',
-                'Machine Learning', 'Data Analysis', 'AWS', 'Azure', 'Docker',
-                'Communication', 'Leadership', 'Project Management', 'Teamwork',
-                'Problem Solving', 'Marketing', 'SEO', 'Social Media',
-                'Accounting', 'Financial Analysis', 'Excel', 'QuickBooks',
-                'HR Management', 'Recruitment', 'Employee Relations',
-                'MS Office', 'PowerPoint', 'Word', 'Outlook'
-            ]
+            # Soft Skills
+            'Communication', 'Leadership', 'Project Management', 'Teamwork', 'Team Building',
+            'Problem Solving', 'Critical Thinking', 'Time Management', 'Adaptability',
+            'Conflict Resolution', 'Negotiation', 'Presentation', 'Public Speaking',
             
-            skills_lower = skills_text.lower()
-            for skill in common_skills:
-                if skill.lower() in skills_lower:
-                    skills.append(skill)
+            # Business & Marketing
+            'Marketing', 'Digital Marketing', 'SEO', 'Social Media', 'Content Marketing',
+            'Brand Management', 'Market Research', 'Sales', 'Customer Service',
+            'Business Development', 'Strategic Planning', 'Analytics',
+            
+            # Finance & Accounting
+            'Accounting', 'Financial Analysis', 'Financial Reporting', 'Budgeting', 
+            'Forecasting', 'Excel', 'QuickBooks', 'SAP', 'Oracle', 'Bookkeeping',
+            'Tax Preparation', 'Auditing', 'Cost Analysis', 'Financial Planning',
+            
+            # HR
+            'HR Management', 'Recruitment', 'Employee Relations', 'Talent Acquisition',
+            'Performance Management', 'Training', 'Onboarding', 'Compensation',
+            'Benefits Administration', 'Labor Relations', 'HRIS', 'Compliance',
+            
+            # Office & Productivity
+            'MS Office', 'Microsoft Office', 'PowerPoint', 'Word', 'Outlook', 'Excel',
+            'Google Suite', 'Data Entry', 'Administrative', 'Documentation',
+            
+            # Additional
+            'Research', 'Analysis', 'Reporting', 'Documentation', 'Quality Assurance',
+            'Process Improvement', 'Stakeholder Management', 'Risk Management'
+        ]
+        
+        text_lower = search_text.lower()
+        
+        for skill in common_skills:
+            skill_pattern = r'\b' + re.escape(skill.lower()) + r'\b'
+            if re.search(skill_pattern, text_lower):
+                skills.append(skill)
+        
+        # Remove duplicates
+        skills = list(dict.fromkeys(skills))
         
         return skills if skills else ["Not specified"]
     
@@ -146,13 +175,15 @@ class JobDescriptionParser:
         education = []
         
         degree_patterns = [
-            r"Bachelor(?:'s)?\s+(?:degree|of\s+)?(?:Science|Arts|Engineering|Technology|Business|Commerce)?",
+            r"Bachelor(?:'s)?\s+(?:degree|of\s+)?(?:Science|Arts|Engineering|Technology|Business|Commerce|Finance|Accounting)?",
             r"Master(?:'s)?\s+(?:degree|of\s+)?(?:Science|Arts|Engineering|Technology|Business|Commerce)?",
             r"B\.?(?:Sc|A|E|Tech|Com|B\.?A)\.?",
             r"M\.?(?:Sc|A|E|Tech|Com|B\.?A)\.?",
             r"Ph\.?D\.?",
             r"Diploma",
-            r"High School|Secondary Education"
+            r"High School|Secondary Education",
+            r"BA\s+in",
+            r"BSc\s+in"
         ]
         
         for pattern in degree_patterns:
@@ -231,6 +262,6 @@ if __name__ == "__main__":
         print("="*60)
         for job in jobs:
             print(f"\nJob: {job['job_title']}")
-            print(f"Required Skills: {', '.join(job['required_skills'][:5])}")
+            print(f"Required Skills: {', '.join(job['required_skills'][:10])}")
             print(f"Required Experience: {job['required_experience']} years")
             print(f"Required Education: {', '.join(job['required_education'])}")
